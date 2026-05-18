@@ -24,22 +24,33 @@ services:
   # ── Prefect ───────────────────────────────────────────────
   prefect-orion:
     image: prefecthq/prefect:2.14.0-python3.10
-    command: prefect orion start --host 0.0.0.0
+    command: prefect server start --host 0.0.0.0
     ports:
       - "4200:4200"
     volumes:
       - prefect_data:/root/.prefect
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health')\""]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+      start_period: 60s
 
   prefect-worker:
     image: prefecthq/prefect:2.14.0-python3.10
     command: prefect worker start -p docker -n lab28-worker
+    restart: on-failure
     environment:
       PREFECT_API_URL: http://prefect-orion:4200/api
     volumes:
       - ./prefect/flows:/opt/prefect/flows
       - ./delta-lake:/opt/delta-lake
       - /var/run/docker.sock:/var/run/docker.sock
-    depends_on: [prefect-orion, kafka]
+    depends_on:
+      prefect-orion:
+        condition: service_healthy
+      kafka:
+        condition: service_started
 
   # ── Vector Store (Qdrant) ─────────────────────────────────
   qdrant:
